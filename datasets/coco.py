@@ -39,7 +39,7 @@ default_aug_cfg = {
     'hsv_s': 0.68,
     'hsv_v': 0.36,
     'degree': (-10, 10),
-    'translate': 0,
+    'translate': 0.1,
     'shear': 0.0,
     'beta': (8, 8),
 }
@@ -182,7 +182,9 @@ class COCODataSets(Dataset):
                 color_gitter,
                 RandCrop(min_thresh=0.6, max_thresh=1.0).reset(p=0.2),
                 RandScaleToMax(max_threshes=[self.max_thresh]),
-                RandPerspective(degree=self.aug_cfg['degree'], scale=(0.6, 1.2))
+                RandPerspective(degree=self.aug_cfg['degree'],
+                                scale=(0.6, 1.2),
+                                translate=self.aug_cfg['translate'])
             ]
         )
 
@@ -203,9 +205,9 @@ class COCODataSets(Dataset):
         augment_transform = Compose(
             transforms=[
                 OneOf(transforms=[
-                    (0.2, basic_transform),
+                    (1.0, basic_transform),
                     (0.0, mix_up),
-                    (0.8, mosaic)
+                    (0.0, mosaic)
                 ]),
                 LRFlip().reset(p=0.5)
             ]

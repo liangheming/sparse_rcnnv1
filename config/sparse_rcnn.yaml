@@ -1,10 +1,10 @@
 model_name: sparse_rcnn
 data:
-#  train_annotation_path: /home/huffman/data/annotations/instances_train2017.json
-  train_annotation_path: /home/huffman/data/annotations/instances_val2017.json
+  train_annotation_path: /home/huffman/data/annotations/instances_train2017.json
+#  train_annotation_path: /home/huffman/data/annotations/instances_val2017.json
   val_annotation_path: /home/huffman/data/annotations/instances_val2017.json
-#  train_img_root: /home/huffman/data/train2017
-  train_img_root: /home/huffman/data/val2017
+  train_img_root: /home/huffman/data/train2017
+#  train_img_root: /home/huffman/data/val2017
   val_img_root: /home/huffman/data/val2017
   max_thresh: 640
   use_crowd: False
