@@ -12,9 +12,10 @@ from nets.sparse_rcnn import SparseRCNN
 from torch.utils.data.dataloader import DataLoader
 from utils.model_utils import rand_seed, ModelEMA, AverageLogger, reduce_sum
 from metrics.map import coco_map
-from utils.optims_utils import IterWarmUpCosineDecayMultiStepLRAdjust, split_optimizer
+from utils.optims_utils import IterWarmUpCosineDecayMultiStepLRAdjust, split_optimizer_v2
 
 rand_seed(1024)
+
 
 # torch.autograd.set_detect_anomaly(True)
 
@@ -67,7 +68,7 @@ class DDPMixSolver(object):
               "val_iter: ", len(self.vloader))
         model = SparseRCNN(**self.model_cfg)
         self.best_map = 0.
-        optimizer = split_optimizer(model, self.optim_cfg)
+        optimizer = split_optimizer_v2(model, self.optim_cfg)
         local_rank = dist.get_rank()
         self.local_rank = local_rank
         self.device = torch.device("cuda", local_rank)
@@ -91,6 +92,8 @@ class DDPMixSolver(object):
         self.iou_loss_logger = AverageLogger()
         self.match_num_logger = AverageLogger()
         self.loss_logger = AverageLogger()
+        # if self.local_rank == 0:
+        #     print(self.model)
 
     def train(self, epoch):
         self.loss_logger.reset()
@@ -144,8 +147,8 @@ class DDPMixSolver(object):
                 "epoch:{:2d}|match_num:{:0>4d}|size:{:3d}|loss:{:6.4f}|cls:{:6.4f}|l1:{:6.4f}|iou:{:6.4f}|lr:{:8.6f}"
             if self.local_rank == 0:
                 pbar.set_description(str_template.format(
-                    epoch,
-                    match_num,
+                    epoch + 1,
+                    int(match_num),
                     h,
                     self.loss_logger.avg(),
                     self.cls_loss_logger.avg(),
@@ -162,7 +165,7 @@ class DDPMixSolver(object):
         if self.local_rank == 0:
             final_template = "epoch:{:2d}|match_num:{:d}|loss:{:6.4f}|cls:{:6.4f}|l1:{:6.4f}|iou:{:6.4f}"
             print(final_template.format(
-                epoch,
+                epoch + 1,
                 int(match_num_sum),
                 loss_avg,
                 cls_loss_avg,
@@ -183,7 +186,7 @@ class DDPMixSolver(object):
         for img_tensor, targets_tensor, batch_len in pbar:
             img_tensor = img_tensor.to(self.device)
             targets_tensor = targets_tensor.to(self.device)
-            predicts = self.ema.ema(img_tensor)['predicts']
+            predicts = self.model(img_tensor)['predicts']
             for pred, target in zip(predicts, targets_tensor.split(batch_len)):
                 predict_list.append(pred)
                 target_list.append(target)
@@ -210,11 +213,12 @@ class DDPMixSolver(object):
                                             "{:s}_{:s}_best_map.pth"
                                             .format(self.cfg['model_name'],
                                                     self.model_cfg['backbone']))
-        ema_static = self.ema.ema.state_dict()
+        model_static = self.model.module.state_dict()
         cpkt = {
-            "ema": ema_static,
+            "model": model_static,
             "map": mean_ap * 100,
             "epoch": epoch,
+            "ema": self.ema.ema.state_dict()
         }
         if self.local_rank != 0:
             return

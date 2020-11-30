@@ -83,12 +83,16 @@ class ModelEMA:
         copy_attr(self.ema, model, include, exclude)
 
 
-def reduce_sum(tensor,clone=True):
+def reduce_sum(tensor, clone=True):
     import torch.distributed as dist
     if clone:
         tensor = tensor.clone()
     dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
     return tensor
+
+
+def get_gpu_num_solo():
+    return len(os.environ['CUDA_VISIBLE_DEVICES'].split(","))
 
 
 class AverageLogger(object):

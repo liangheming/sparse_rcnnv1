@@ -3,6 +3,7 @@ import numpy as np
 from torch import nn
 from torch.optim.adam import Adam
 from torch.optim.sgd import SGD
+from torch.optim.adamw import AdamW
 
 
 def split_params(model: nn.Module):
@@ -18,17 +19,53 @@ def split_params(model: nn.Module):
     return param_weight_decay, param_bias, param_other
 
 
+def split_params_v2(model: nn.Module):
+    param_other, param_weight, param_bias, param_norm = list(), list(), list(), list()  # optimizer parameter groups
+    for k, v in model.named_parameters():
+        if v.requires_grad:
+            if '.bias' in k and '.bn' not in k and '.norm' not in k:
+                param_bias.append(v)  # biases
+            elif '.weight' in k and '.bn' not in k and '.norm' not in k:
+                param_weight.append(v)  # apply weight decay
+            elif '.bn' in k or '.norm' in k:
+                param_norm.append(v)  # all else
+            else:
+                param_other.append(v)
+    return param_weight, param_bias, param_norm, param_other
+
+
 def split_optimizer(model: nn.Module, cfg: dict):
     param_weight_decay, param_bias, param_other = split_params(model)
     if cfg['optimizer'] == 'Adam':
         optimizer = Adam(param_other, lr=cfg['lr'])
     elif cfg['optimizer'] == 'SGD':
         optimizer = SGD(param_other, lr=cfg['lr'], momentum=cfg['momentum'])
+    elif cfg['optimizer'] == "AdamW":
+        optimizer = AdamW(param_other, lr=cfg['lr'])
     else:
         raise NotImplementedError("optimizer {:s} is not support!".format(cfg['optimizer']))
     optimizer.add_param_group(
         {'params': param_weight_decay, 'weight_decay': cfg['weight_decay']})  # add pg1 with weight_decay
     optimizer.add_param_group({'params': param_bias})
+    return optimizer
+
+
+def split_optimizer_v2(model: nn.Module, cfg: dict):
+    param_weight, param_bias, param_norm, param_other = split_params_v2(model)
+    if cfg['optimizer'] == 'Adam':
+        optimizer = Adam(param_other, lr=cfg['lr'], weight_decay=cfg['weight_decay'])
+    elif cfg['optimizer'] == 'SGD':
+        optimizer = SGD(param_other, lr=cfg['lr'], momentum=cfg['momentum'], weight_decay=cfg['weight_decay'])
+    elif cfg['optimizer'] == "AdamW":
+        optimizer = AdamW(param_other, lr=cfg['lr'], weight_decay=cfg['weight_decay'])
+    else:
+        raise NotImplementedError("optimizer {:s} is not support!".format(cfg['optimizer']))
+    optimizer.add_param_group(
+        {'params': param_weight, 'weight_decay': cfg['weight_decay']})  # add pg1 with weight_decay
+    optimizer.add_param_group(
+        {'params': param_bias, 'weight_decay': cfg['weight_decay']})
+    optimizer.add_param_group(
+        {'params': param_norm, 'weight_decay': 0.})
     return optimizer
 
 

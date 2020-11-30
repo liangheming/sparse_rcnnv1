@@ -140,3 +140,16 @@ def coco_map(predicts_list, targets_list):
         return mp, mr, map50, map
     else:
         return 0., 0., 0., 0.
+
+
+def coco_eval(anno_path="/home/huffman/data/annotations/instances_val2017.json", pred_path="predicts.json"):
+    from pycocotools.coco import COCO
+    from pycocotools.cocoeval import COCOeval
+    cocoGt = COCO(anno_path)  # initialize COCO ground truth api
+    cocoDt = cocoGt.loadRes(pred_path)  # initialize COCO pred api
+    imgIds = [img_id for img_id in cocoGt.imgs.keys()]
+    cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
+    cocoEval.params.imgIds = imgIds  # image IDs to evaluate
+    cocoEval.evaluate()
+    cocoEval.accumulate()
+    cocoEval.summarize()

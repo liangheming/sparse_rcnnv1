@@ -8,7 +8,7 @@ data:
   val_img_root: /home/huffman/data/val2017
   max_thresh: 640
   use_crowd: False
-  batch_size: 8
+  batch_size: 4
   num_workers: 4
   debug: False
   remove_blank: Ture
@@ -28,14 +28,14 @@ model:
   l1_cost: 1.0
 
 optim:
-  optimizer: Adam
-  lr: 0.0001
-  milestones: [18,24]
+  optimizer: AdamW
+  lr: 0.000025
+  milestones: [27,33]
   warm_up_epoch: 0
   weight_decay: 0.0001
-  epochs: 24
-  sync_bn: True
-  amp: True
+  epochs: 36
+  sync_bn: False
+  amp: False
 val:
   interval: 1
   weight_path: weights

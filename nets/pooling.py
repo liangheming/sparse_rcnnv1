@@ -193,7 +193,8 @@ class MultiScaleRoIAlign(nn.Module):
                 x_filtered[0], rois,
                 output_size=self.output_size,
                 spatial_scale=scales[0],
-                sampling_ratio=self.sampling_ratio
+                sampling_ratio=self.sampling_ratio,
+                aligned=True
             )
 
         mapper = self.map_levels
@@ -219,7 +220,7 @@ class MultiScaleRoIAlign(nn.Module):
             result_idx_in_level = roi_align(
                 per_level_feature, rois_per_level,
                 output_size=self.output_size,
-                spatial_scale=scale, sampling_ratio=self.sampling_ratio)
+                spatial_scale=scale, sampling_ratio=self.sampling_ratio, aligned=True)
 
             if torchvision._is_tracing():
                 tracing_results.append(result_idx_in_level.to(dtype))

@@ -4,6 +4,7 @@ from torch import nn
 from nets.pooling import MultiScaleRoIAlign
 from losses.sparse_rcnn_loss import BoxCoder, SparseRCNNLoss
 from nets import resnet
+from nets.common import FrozenBatchNorm2d
 
 
 class FPN(nn.Module):
@@ -18,7 +19,6 @@ class FPN(nn.Module):
         self.p3_out = nn.Conv2d(inner_channel, inner_channel, 3, 1, 1, bias=bias)
         self.p4_out = nn.Conv2d(inner_channel, inner_channel, 3, 1, 1, bias=bias)
         self.p5_out = nn.Conv2d(inner_channel, inner_channel, 3, 1, 1, bias=bias)
-        self.pool = nn.MaxPool2d(2, 2)
 
     def forward(self, c2, c3, c4, c5):
         latent_2 = self.c2_to_f2(c2)
@@ -33,8 +33,7 @@ class FPN(nn.Module):
         p3 = self.p3_out(f3)
         p4 = self.p4_out(f4)
         p5 = self.p5_out(latent_5)
-        pool = self.pool(p5)
-        return p2, p3, p4, p5, pool
+        return p2, p3, p4, p5
 
 
 class DynamicConv(nn.Module):
@@ -185,7 +184,7 @@ class DynamicHead(nn.Module):
                  **kwargs):
         super(DynamicHead, self).__init__()
         self.pooling_layer = MultiScaleRoIAlign(
-            ['p2', 'p3', 'p4', 'p5', 'pool'],
+            ['p2', 'p3', 'p4', 'p5'],
             output_size=pooling_resolution,
             sampling_ratio=2
         )
@@ -245,7 +244,7 @@ default_cfg = {
     "num_cls": 80,
     "dim_feedforward": 2048,
     "nhead": 8,
-    "dropout": 0.1,
+    "dropout": 0,
     "pooling_resolution": 7,
     "activation": nn.ReLU,
     "cls_tower_num": 1,
@@ -255,6 +254,7 @@ default_cfg = {
     "num_proposals": 100,
     "backbone": "resnet18",
     "pretrained": True,
+    "norm_layer": FrozenBatchNorm2d,
     # loss cfg
     "iou_type": "giou",
     "iou_weights": 2.0,
@@ -270,7 +270,8 @@ class SparseRCNN(nn.Module):
     def __init__(self, **cfg):
         super(SparseRCNN, self).__init__()
         self.cfg = {**default_cfg, **cfg}
-        self.backbones = getattr(resnet, self.cfg['backbone'])(pretrained=self.cfg['pretrained'])
+        self.backbones = getattr(resnet, self.cfg['backbone'])(pretrained=self.cfg['pretrained'],
+                                                               norm_layer=self.cfg['norm_layer'])
         c2, c3, c4, c5 = self.backbones.inner_channels
         self.fpn = FPN(c2, c3, c4, c5, self.cfg['in_channel'])
 
@@ -305,17 +306,18 @@ class SparseRCNN(nn.Module):
 
     def forward(self, x, targets=None):
         c2, c3, c4, c5 = self.backbones(x)
-        p2, p3, p4, p5, pool = self.fpn(c2, c3, c4, c5)
+        p2, p3, p4, p5 = self.fpn(c2, c3, c4, c5)
         h, w = x.shape[2:]
         shapes = [(h, w)] * x.size(0)
         if self.shape_weights is None:
             self.shape_weights = torch.tensor([w, h, w, h], device=x.device)[None, :]
 
         init_boxes = self.init_proposal_boxes.weight * self.shape_weights
-        init_boxes[:, :2] = init_boxes[:, :2] - init_boxes[:, 2:] / 2.0
-        init_boxes[:, 2:] = init_boxes[:, :2] + init_boxes[:, 2:]
-        cls_predicts, box_predicts = self.head({"p2": p2, "p3": p3, "p4": p4, "p5": p5, "pool": pool},
-                                               init_boxes,
+        init_boxes_x1y1 = init_boxes[:, :2] - init_boxes[:, 2:] / 2.0
+        init_boxes_x2y2 = init_boxes_x1y1 + init_boxes[:, 2:]
+        init_boxes_xyxy = torch.cat([init_boxes_x1y1, init_boxes_x2y2], dim=-1)
+        cls_predicts, box_predicts = self.head({"p2": p2, "p3": p3, "p4": p4, "p5": p5},
+                                               init_boxes_xyxy,
                                                self.init_proposal_features.weight,
                                                shapes)
         ret = dict()
@@ -333,17 +335,20 @@ class SparseRCNN(nn.Module):
             ret['predicts'] = predicts
         return ret
 
-    @staticmethod
-    def post_process(cls_predict, box_predict, shapes):
+    def post_process(self, cls_predict, box_predict, shapes):
         assert len(cls_predict) == len(box_predict)
         scores = cls_predict.sigmoid()
         result = list()
+        labels = torch.arange(self.cfg['num_cls'], device=cls_predict.device). \
+            unsqueeze(0).repeat(self.cfg['num_proposals'], 1).flatten(0, 1)
         for score, box, shape in zip(scores, box_predict, shapes):
-            val, idx = score.max(-1)
-            box[:, [0, 2]] = box[:, [0, 2]].clamp(min=0, max=shape[1])
-            box[:, [1, 3]] = box[:, [1, 3]].clamp(min=0, max=shape[0])
-            out = torch.cat([box, val[:, None], idx[:, None]], dim=-1)
-            result.append(out)
+            scores_per_image, topk_indices = score.flatten(0, 1).topk(self.cfg['num_proposals'], sorted=False)
+            labels_per_image = labels[topk_indices]
+            box = box.view(-1, 1, 4).repeat(1, self.cfg['num_cls'], 1).view(-1, 4)
+            x1y1x2y2 = box[topk_indices]
+            x1y1x2y2[:, [0, 2]] = x1y1x2y2[:, [0, 2]].clamp(min=0, max=shape[1])
+            x1y1x2y2[:, [1, 3]] = x1y1x2y2[:, [1, 3]].clamp(min=0, max=shape[0])
+            result.append(torch.cat([x1y1x2y2, scores_per_image[:, None], labels_per_image[:, None]], dim=-1))
         return result
 
 

@@ -1,6 +1,7 @@
 import torch
 from losses.commons import IOULoss, BoxSimilarity, focal_loss
 from scipy.optimize import linear_sum_assignment
+from utils.model_utils import reduce_sum, get_gpu_num_solo
 
 
 class BoxCoder(object):
@@ -44,12 +45,6 @@ class BoxCoder(object):
         scale_x1y1 = (anchors_xy + scale_reg[..., :2] * anchors_wh) - 0.5 * scale_wh
         scale_x2y2 = scale_x1y1 + scale_wh
         return torch.cat([scale_x1y1, scale_x2y2], dim=-1)
-        # scale_reg[..., :2] = anchors_xy + scale_reg[..., :2] * anchors_wh
-        # scale_reg[..., 2:] = scale_reg[..., 2:].exp() * anchors_wh
-        # scale_reg[..., :2] -= (0.5 * scale_reg[..., 2:])
-        # scale_reg[..., 2:] = scale_reg[..., :2] + scale_reg[..., 2:]
-        #
-        # return scale_reg
 
 
 class HungarianMatcher(object):
@@ -123,32 +118,41 @@ class SparseRCNNLoss(object):
     def __call__(self, cls_predicts, reg_predicts, targets, shape):
         h, w = shape
         shape_norm = torch.tensor([w, h, w, h], device=cls_predicts.device)
+        pos_num = len(targets['target'])
         gt_boxes = targets['target'].split(targets['batch_len'])
-        cls_losses = 0.
-        iou_losses = 0.
-        l1_losses = 0.
-        pos_num = 0
         if cls_predicts.dtype == torch.float16:
             cls_predicts = cls_predicts.float()
-        for batch_cls_predict, batch_reg_predict in zip(cls_predicts, reg_predicts):
+        all_imme_idx = list()
+        all_batch_idx = list()
+        all_proposal_idx = list()
+        all_cls_label_idx = list()
+        all_box_targets = list()
+        for imme_idx, batch_cls_predict, batch_reg_predict in zip(range(len(cls_predicts)), cls_predicts, reg_predicts):
             matches = self.matcher(batch_cls_predict.detach(), batch_reg_predict.detach(), gt_boxes, shape_norm)
+
             match_cls_bidx = sum([[i] * len(j) for i, j, _ in matches], [])
             match_proposal_idx = sum([j for _, j, _ in matches], [])
             match_cls_label_idx = torch.cat([gt_boxes[i][:, 0][k].long() for i, _, k in matches])
             match_box = torch.cat([gt_boxes[i][:, 1:][k] for i, _, k in matches])
-            pos_num = len(match_cls_bidx)
 
-            cls_targets = torch.zeros_like(batch_cls_predict)
-            cls_targets[match_cls_bidx, match_proposal_idx, match_cls_label_idx] = 1.0
-            cls_loss = self.cls_weights * focal_loss(batch_cls_predict.sigmoid(), cls_targets).sum() / pos_num
+            all_imme_idx.append([imme_idx] * len(match_cls_bidx))
+            all_batch_idx.append(match_cls_bidx)
+            all_proposal_idx.append(match_proposal_idx)
+            all_cls_label_idx.append(match_cls_label_idx)
+            all_box_targets.append(match_box)
 
-            box_pred = batch_reg_predict[match_cls_bidx, match_proposal_idx]
-            box_loss = self.iou_weights * self.iou_loss(box_pred, match_box).sum() / pos_num
-
-            l1_loss = self.l1_weights * torch.nn.functional.l1_loss(box_pred / shape_norm[None, :],
-                                                                    match_box / shape_norm[None, :],
-                                                                    reduction="none").sum() / pos_num
-            cls_losses += cls_loss
-            iou_losses += box_loss
-            l1_losses += l1_loss
-        return cls_losses, iou_losses, l1_losses, pos_num
+        all_imme_idx = sum(all_imme_idx, [])
+        all_batch_idx = sum(all_batch_idx, [])
+        all_proposal_idx = sum(all_proposal_idx, [])
+        all_cls_label_idx = torch.cat(all_cls_label_idx)
+        all_box_targets = torch.cat(all_box_targets)
+        cls_targets = torch.zeros_like(cls_predicts)
+        cls_targets[all_imme_idx, all_batch_idx, all_proposal_idx, all_cls_label_idx] = 1.0
+        box_pred = reg_predicts[all_imme_idx, all_batch_idx, all_proposal_idx]
+        cls_loss = self.cls_weights * focal_loss(cls_predicts.sigmoid(), cls_targets).sum()
+        box_loss = self.iou_weights * self.iou_loss(box_pred, all_box_targets).sum()
+        l1_loss = self.l1_weights * torch.nn.functional.l1_loss(box_pred / shape_norm[None, :],
+                                                                all_box_targets / shape_norm[None, :],
+                                                                reduction="none").sum()
+        # pos_num = reduce_sum(torch.tensor(pos_num, device=cls_predicts.device)).item() / get_gpu_num_solo()
+        return cls_loss / pos_num, box_loss / pos_num, l1_loss / pos_num, pos_num
