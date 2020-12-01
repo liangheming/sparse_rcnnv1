@@ -154,5 +154,5 @@ class SparseRCNNLoss(object):
         l1_loss = self.l1_weights * torch.nn.functional.l1_loss(box_pred / shape_norm[None, :],
                                                                 all_box_targets / shape_norm[None, :],
                                                                 reduction="none").sum()
-        # pos_num = reduce_sum(torch.tensor(pos_num, device=cls_predicts.device)).item() / get_gpu_num_solo()
+        pos_num = reduce_sum(torch.tensor(pos_num, device=cls_predicts.device)).item() / get_gpu_num_solo()
         return cls_loss / pos_num, box_loss / pos_num, l1_loss / pos_num, pos_num

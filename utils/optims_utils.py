@@ -164,3 +164,60 @@ class EpochWarmUpCosineDecayLRAdjust(object):
         for i, param_group in enumerate(optimizer.param_groups):
             param_group['lr'] = dlr if self.bias_idx is not None and i == self.bias_idx else ulr
         return ulr, dlr
+
+
+class IterWarmUpMultiStepDecay(object):
+    def __init__(self,
+                 init_lr=0.01,
+                 epochs=300,
+                 warm_up_iter=100,
+                 iter_per_epoch=300,
+                 milestones=None,
+                 alpha=0.1,
+                 warm_up_factor=0.01):
+        self.init_lr = init_lr
+        self.epochs = epochs
+        self.warm_up_iter = warm_up_iter
+        self.iter_per_epoch = iter_per_epoch
+        self.milestones = milestones
+        self.alpha = alpha
+        self.ite_mile_stones = np.array(self.milestones) * self.iter_per_epoch
+        self.warm_up_factor = warm_up_factor
+        assert warm_up_iter < self.ite_mile_stones[0] and self.ite_mile_stones[-1] <= self.epochs * self.iter_per_epoch
+
+    def get_lr(self, ite, epoch):
+        current_iter = self.iter_per_epoch * epoch + ite
+        if current_iter <= self.warm_up_iter:
+            lr = np.interp(current_iter, [0, self.warm_up_iter], [self.init_lr * self.warm_up_factor, self.init_lr])
+        else:
+            power = (current_iter >= self.ite_mile_stones).sum()
+            lr = self.alpha ** power * self.init_lr
+        return lr
+
+    def __call__(self, optimizer, ite, epoch):
+        lr = self.get_lr(ite, epoch)
+        for i, param_group in enumerate(optimizer.param_groups):
+            param_group['lr'] = lr
+        return lr
+
+
+# if __name__ == '__main__':
+#     epochs = 40
+#     iter_per_epoch = 30
+#     adjuster = IterWarmUpMultiStepDecay(warm_up_iter=50,
+#                                         milestones=[2, 10, 40],
+#                                         epochs=epochs,
+#                                         iter_per_epoch=iter_per_epoch)
+#     import matplotlib.pyplot as plt
+#
+#     lrs = list()
+#     steps = list()
+#     for i in range(epochs):
+#         for j in range(iter_per_epoch):
+#             lr = adjuster.get_lr(j, i)
+#             lrs.append(lr)
+#             steps.append(i * iter_per_epoch + j)
+#     xs = np.array(steps)
+#     ys = np.array(lrs)
+#     plt.plot(xs, ys)
+#     plt.savefig("temp.jpg")

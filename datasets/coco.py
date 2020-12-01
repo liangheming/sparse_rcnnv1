@@ -205,9 +205,9 @@ class COCODataSets(Dataset):
         augment_transform = Compose(
             transforms=[
                 OneOf(transforms=[
-                    (1.0, basic_transform),
+                    (0.2, basic_transform),
                     (0.0, mix_up),
-                    (0.0, mosaic)
+                    (0.8, mosaic)
                 ]),
                 LRFlip().reset(p=0.5)
             ]

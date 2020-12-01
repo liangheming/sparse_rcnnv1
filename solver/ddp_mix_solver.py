@@ -12,12 +12,9 @@ from nets.sparse_rcnn import SparseRCNN
 from torch.utils.data.dataloader import DataLoader
 from utils.model_utils import rand_seed, ModelEMA, AverageLogger, reduce_sum
 from metrics.map import coco_map
-from utils.optims_utils import IterWarmUpCosineDecayMultiStepLRAdjust, split_optimizer_v2
+from utils.optims_utils import IterWarmUpMultiStepDecay, split_optimizer_v2
 
 rand_seed(1024)
-
-
-# torch.autograd.set_detect_anomaly(True)
 
 
 class DDPMixSolver(object):
@@ -81,12 +78,14 @@ class DDPMixSolver(object):
         self.scaler = amp.GradScaler(enabled=True) if self.optim_cfg['amp'] else None
         self.optimizer = optimizer
         self.ema = ModelEMA(self.model)
-        self.lr_adjuster = IterWarmUpCosineDecayMultiStepLRAdjust(init_lr=self.optim_cfg['lr'],
-                                                                  milestones=self.optim_cfg['milestones'],
-                                                                  warm_up_epoch=self.optim_cfg['warm_up_epoch'],
-                                                                  iter_per_epoch=len(self.tloader),
-                                                                  epochs=self.optim_cfg['epochs'],
-                                                                  )
+        self.lr_adjuster = IterWarmUpMultiStepDecay(init_lr=self.optim_cfg['lr'],
+                                                    milestones=self.optim_cfg['milestones'],
+                                                    warm_up_iter=self.optim_cfg['warm_up_iter'],
+                                                    iter_per_epoch=len(self.tloader),
+                                                    epochs=self.optim_cfg['epochs'],
+                                                    alpha=self.optim_cfg['alpha'],
+                                                    warm_up_factor=self.optim_cfg['warm_up_factor']
+                                                    )
         self.cls_loss_logger = AverageLogger()
         self.l1_loss_logger = AverageLogger()
         self.iou_loss_logger = AverageLogger()
@@ -186,7 +185,7 @@ class DDPMixSolver(object):
         for img_tensor, targets_tensor, batch_len in pbar:
             img_tensor = img_tensor.to(self.device)
             targets_tensor = targets_tensor.to(self.device)
-            predicts = self.model(img_tensor)['predicts']
+            predicts = self.ema.ema(img_tensor)['predicts']
             for pred, target in zip(predicts, targets_tensor.split(batch_len)):
                 predict_list.append(pred)
                 target_list.append(target)

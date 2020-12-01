@@ -1,10 +1,10 @@
 model_name: sparse_rcnn
 data:
   train_annotation_path: /home/huffman/data/annotations/instances_train2017.json
-#  train_annotation_path: /home/huffman/data/annotations/instances_val2017.json
+  #  train_annotation_path: /home/huffman/data/annotations/instances_val2017.json
   val_annotation_path: /home/huffman/data/annotations/instances_val2017.json
   train_img_root: /home/huffman/data/train2017
-#  train_img_root: /home/huffman/data/val2017
+  #  train_img_root: /home/huffman/data/val2017
   val_img_root: /home/huffman/data/val2017
   max_thresh: 640
   use_crowd: False
@@ -26,16 +26,19 @@ model:
   cls_cost: 1.0
   l1_weights: 5.0
   l1_cost: 1.0
+  num_proposals: 128
 
 optim:
   optimizer: AdamW
   lr: 0.000025
   milestones: [27,33]
-  warm_up_epoch: 0
+  warm_up_iter: 1000
   weight_decay: 0.0001
   epochs: 36
   sync_bn: False
   amp: False
+  alpha: 0.1
+  warm_up_factor: 0.01
 val:
   interval: 1
   weight_path: weights
