@@ -27,13 +27,13 @@ def coco_eval(anno_path="/home/huffman/data/annotations/instances_val2017.json",
 
 
 @torch.no_grad()
-def eval_model(weight_path="weights/sparse_rcnn_resnet50_best_map.pth", device="cuda:0"):
+def eval_model(weight_path="weights/sparse_rcnn_resnet50_last.pth", device="cuda:5"):
     from pycocotools.coco import COCO
     device = torch.device(device)
     with open("config/sparse_rcnn.yaml", 'r') as rf:
         cfg = yaml.safe_load(rf)
     net = SparseRCNN(**{**cfg['model'], 'pretrained': False})
-    net.load_state_dict(torch.load(weight_path, map_location="cpu")['model'])
+    net.load_state_dict(torch.load(weight_path, map_location="cpu")['ema'])
     net.to(device)
     net.eval()
     data_cfg = cfg['data']
