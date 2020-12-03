@@ -13,23 +13,23 @@ torchvision >=0.6.0
 ```
 ## result
 we trained this repo on 4 GPUs with batch size 16(4 image per node).the total epoch is 36(3x),AdamW with cosine lr decay is used for optimizing.
-finally, this repo achieves 39.6 mAp at 640px(max side) resolution with resnet50 backbone.(about 42.95fps)
+finally, this repo achieves 38.9 mAp at 640px(max side) resolution with resnet50 backbone.(about 30.95fps)
 
-**based on epoch 17(not finish)**
-
+**attention** : there is a large mismatch between the official mAP(pycocotools) calculation and the mAP calculation in this repo. you don't need to pay too much attention to mAP in training log
 ```shell script
- Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.374
- Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.576
- Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.398
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.205
- Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.395
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.536
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.319
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.514
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.554
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.352
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.599
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.749
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.389
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.592
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.417
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.214
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.412
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.554
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.327
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.528
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.566
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.348
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.614
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.760
+
 ```
 
 ## difference from original implement
